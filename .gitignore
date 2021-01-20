@@ -1,2 +1,4 @@
 .ccls-cache/
 build/
+.idea/
+cmake-build-debug/
