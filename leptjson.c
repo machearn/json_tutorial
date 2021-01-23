@@ -118,10 +118,51 @@ static int lept_parse_number(lept_value* v, lept_context* c) {
     return LEPT_PARSE_OK;
 }
 
+static const char* lept_parse_hex4(const char* p, unsigned int* u) {
+    int base[4] = {4096, 256, 16, 1};
+    char ch;
+    int i;
+    for (i = 0; i < 4; i++) {
+        ch = *(p+i);
+        if (ch >= '0' && ch <= '9')
+            *u += (ch-'0') * base[i];
+        else if ((ch >= 'a' && ch <= 'f'))
+            *u += (ch-'a'+10) * base[i];
+        else if ((ch >= 'A' && ch <= 'F'))
+            *u += (ch-'A'+10) * base[i];
+        else
+            return NULL;
+    }
+    return p+4;
+}
+
+static void lept_encode_utf8(lept_context* c, const unsigned int u) {
+    assert(u >= 0x0000 && u <= 0x10ffff);
+    if (u >= 0x0000 && u <= 0x007f) {
+        push_byte(c, (char)u);
+    }
+    else if (u >= 0x0080 && u <= 0x07ff) {
+        push_byte(c, (char)(0xc0 | ((u >> 6) & 0x1f)));
+        push_byte(c, (char)(0x80 | (u & 0x3f)));
+    }
+    else if (u >= 0x0800 && u <= 0xffff) {
+        push_byte(c, (char)(0xe0 | ((u >> 12) & 0x0f)));
+        push_byte(c, (char)(0x80 | ((u >> 6) & 0x3f)));
+        push_byte(c, (char)(0x80 | (u & 0x3f)));
+    }
+    else {
+        push_byte(c, (char)(0xf0 | ((u >> 18) & 0x07)));
+        push_byte(c, (char)(0x80 | ((u >> 12) & 0x3f)));
+        push_byte(c, (char)(0x80 | ((u >> 6) & 0x3f)));
+        push_byte(c, (char)(0x80 | (u & 0x3f)));
+    }
+}
+
 static int lept_parse_string(lept_value* v, lept_context* c) {
     size_t head = c->top;
     size_t len;
     const char* p;
+    unsigned int u;
 
     EXPECT(c, '\"');
     p = c->json;
@@ -163,6 +204,35 @@ static int lept_parse_string(lept_value* v, lept_context* c) {
                         break;
                     case 't':
                         push_byte(c, '\t');
+                        break;
+                    case 'u':
+                        if (!(p = lept_parse_hex4(p, &u))) {
+                            c->top = head;
+                            return LEPT_PARSE_INVALID_UNICODE_HEX;
+                        }
+                        if (u >= 0xd800 && u <= 0xdbff) {
+                            unsigned short low;
+                            unsigned short high;
+
+                            if (*p != '\\' || *(p+1) != 'u')
+                                return LEPT_PARSE_INVALID_UNICODE_SURROGATE;
+                            else {
+                                p += 2;
+                                high = (unsigned short)u;
+                                u = 0;
+                                if (!(p = lept_parse_hex4(p, &u))) {
+                                    c->top = head;
+                                    return LEPT_PARSE_INVALID_UNICODE_SURROGATE;
+                                }
+                                low = (unsigned short)u;
+                                if (low < 0xdc00 || low > 0xdfff) {
+                                    c->top = head;
+                                    return LEPT_PARSE_INVALID_UNICODE_SURROGATE;
+                                }
+                                u = 0x10000 + (high-0xd800) * 0x400 + (low-0xdc00);
+                            }
+                        }
+                        lept_encode_utf8(c, u);
                         break;
                     default:
                         c->top = head;
