@@ -64,6 +64,29 @@ static int test_pass = 0;
         lept_free(&v);\
     } while(0)
 
+#define TEST_LITERAL_ELEMENT(expect, element)   \
+    do {                                        \
+        EXPECT_EQ_INT(expect, lept_get_type(element));\
+    } while (0);
+
+#define TEST_NUMBER_ELEMENT(expect, element)    \
+    do {                                        \
+        EXPECT_EQ_INT(LEPT_NUMBER, lept_get_type(element)); \
+        EXPECT_EQ_DOUBLE(expect, lept_get_number(element)); \
+    } while (0);
+
+#define TEST_STRING_ELEMENT(expect, element)     \
+    do {                                        \
+        EXPECT_EQ_INT(LEPT_STRING, lept_get_type(element));\
+        EXPECT_EQ_STRING(expect, lept_get_string(element), lept_get_string_length(element));\
+    }while(0);
+
+#if defined(_MSC_VER)
+#define EXPECT_EQ_SIZE_T(expect, actual) EXPECT_EQ_BASE((expect) == (actual), (size_t)expect, (size_t)actual, "%Iu")
+#else
+#define EXPECT_EQ_SIZE_T(expect, actual) EXPECT_EQ_BASE((expect) == (actual), (size_t)expect, (size_t)actual, "%zu")
+#endif
+
 static void test_parse_null() {
     TEST_LITERAL(LEPT_NULL, "null");
 }
@@ -123,6 +146,54 @@ static void test_parse_string() {
     TEST_STRING("\xF0\x9D\x84\x9E", "\"\\ud834\\udd1e\"");  /* G clef sign U+1D11E */
 }
 
+static void test_parse_array() {
+    lept_value v;
+
+
+    lept_init(&v);
+    EXPECT_EQ_INT(LEPT_PARSE_OK, lept_parse(&v, "[  ]"));
+    EXPECT_EQ_INT(LEPT_ARRAY, lept_get_type(&v));
+    EXPECT_EQ_SIZE_T(0, lept_get_array_size(&v));
+    lept_free(&v);
+
+
+    lept_init(&v);
+    EXPECT_EQ_INT(LEPT_PARSE_OK, lept_parse(&v, "[ null , false , true , 123 , \"abc\" ]"));
+    EXPECT_EQ_INT(LEPT_ARRAY, lept_get_type(&v));
+    EXPECT_EQ_SIZE_T(5, lept_get_array_size(&v));
+    TEST_LITERAL_ELEMENT(LEPT_NULL, lept_get_array_element(&v, 0));
+    TEST_LITERAL_ELEMENT(LEPT_FALSE, lept_get_array_element(&v, 1));
+    TEST_LITERAL_ELEMENT(LEPT_TRUE, lept_get_array_element(&v, 2));
+    TEST_NUMBER_ELEMENT(123.0, lept_get_array_element(&v, 3));
+    TEST_STRING_ELEMENT("abc", lept_get_array_element(&v, 4));
+    lept_free(&v);
+
+
+    lept_init(&v);
+    EXPECT_EQ_INT(LEPT_PARSE_OK, lept_parse(&v, "[ [  ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]"));
+    EXPECT_EQ_INT(LEPT_ARRAY, lept_get_type(&v));
+    EXPECT_EQ_SIZE_T(4, lept_get_array_size(&v));
+
+    lept_value* e;
+
+    e = lept_get_array_element(&v, 0);
+    EXPECT_EQ_INT(LEPT_ARRAY, lept_get_type(e));
+    EXPECT_EQ_SIZE_T(0, lept_get_array_size(e));
+
+    e = lept_get_array_element(&v, 1);
+    EXPECT_EQ_INT(LEPT_ARRAY, lept_get_type(e));
+    EXPECT_EQ_SIZE_T(1, lept_get_array_size(e));
+
+    e = lept_get_array_element(&v, 2);
+    EXPECT_EQ_INT(LEPT_ARRAY, lept_get_type(e));
+    EXPECT_EQ_SIZE_T(2, lept_get_array_size(e));
+
+    e = lept_get_array_element(&v, 3);
+    EXPECT_EQ_INT(LEPT_ARRAY, lept_get_type(e));
+    EXPECT_EQ_SIZE_T(3, lept_get_array_size(e));
+    lept_free(&v);
+}
+
 static void test_parse_expect_value() {
     TEST_ERROR(LEPT_PARSE_EXPECT_VALUE, " ");
     TEST_ERROR(LEPT_PARSE_EXPECT_VALUE, "");
@@ -140,6 +211,9 @@ static void test_parse_invalid_value() {
     TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "inf");
     TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "NAN");
     TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "nan");
+
+    TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "[1,]");
+    TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "[\"a\", nul]");
 }
 
 static void test_parse_not_singular() {
@@ -196,6 +270,13 @@ static void test_parse_invalid_unicode_surrogate() {
     TEST_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE, "\"\\uD800\\uE000\"");
 }
 
+static void test_parse_miss_comma_or_spuare_bracket() {
+    TEST_ERROR(LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1");
+    TEST_ERROR(LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1}");
+    TEST_ERROR(LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1 2");
+    TEST_ERROR(LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[[]");
+}
+
 static void test_access_null() {
     lept_value v;
     lept_init(&v);
@@ -241,6 +322,7 @@ static void test_parse() {
     test_parse_false();
     test_parse_number();
     test_parse_string();
+    test_parse_array();
     test_parse_expect_value();
     test_parse_invalid_value();
     test_parse_not_singular();
@@ -250,6 +332,7 @@ static void test_parse() {
     test_parse_invalid_string_char();
     test_parse_invalid_unicode_hex();
     test_parse_invalid_unicode_surrogate();
+    test_parse_miss_comma_or_spuare_bracket();
 
     test_access_null();
     test_access_boolean();
