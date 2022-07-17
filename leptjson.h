@@ -37,6 +37,7 @@ struct lept_member {
 };
 
 int lept_parse(lept_value* v, const char* json);
+char* lept_stringfy(const lept_value* v, size_t* len);
 
 enum {
 LEPT_PARSE_OK = 0,
