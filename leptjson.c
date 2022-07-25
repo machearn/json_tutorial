@@ -20,6 +20,10 @@
 #define LEPT_PARSE_ARRAY_INIT_CAPACITY 256
 #endif
 
+#ifndef LEPT_PARSE_OBJECT_INIT_CAPACITY
+#define LEPT_PARSE_OBJECT_INIT_CAPACITY 256
+#endif
+
 typedef struct {
     const char* json;
     char* stack;
@@ -352,9 +356,7 @@ static int lept_parse_object(lept_value* v, lept_context* c) {
     lept_parse_whitespace(c);
     if (*c->json == '}') {
         c->json++;
-        v->type = LEPT_OBJECT;
-        v->u.o.size = 0;
-        v->u.o.m = 0;
+        lept_set_object(v, LEPT_PARSE_OBJECT_INIT_CAPACITY);
         return LEPT_PARSE_OK;
     }
 
@@ -393,10 +395,9 @@ static int lept_parse_object(lept_value* v, lept_context* c) {
         }
         else if (*c->json == '}') {
             c->json++;
-            v->type = LEPT_OBJECT;
+            lept_set_object(v, size);
             v->u.o.size = size;
             size *= sizeof(lept_member);
-            v->u.o.m = malloc(size);
             memcpy(v->u.o.m, lept_context_pop(c, size), size);
             return LEPT_PARSE_OK;
         }
@@ -793,6 +794,45 @@ void lept_erase_array_element(lept_value *v, size_t index, size_t count) {
     }
 }
 
+void lept_set_object(lept_value* v, size_t capacity) {
+    assert(v != NULL);
+    v->type = LEPT_OBJECT;
+    v->u.o.capacity = capacity;
+    v->u.o.size = 0;
+    v->u.o.m = capacity == 0 ? NULL : (lept_member*) malloc(capacity * sizeof(lept_member));
+}
+
+size_t lept_get_object_capacity(const lept_value* v) {
+    assert(v != NULL && v->type == LEPT_OBJECT);
+    return v->u.o.capacity;
+}
+
+void lept_reserve_object(lept_value* v, size_t capacity) {
+    assert(v != NULL && v->type == LEPT_OBJECT);
+    if (v->u.o.capacity < capacity) {
+        v->u.o.capacity = capacity;
+        v->u.o.m = (lept_member*) realloc(v->u.o.m, capacity*sizeof(lept_member));
+    }
+}
+
+void lept_shrink_object(lept_value* v) {
+    assert(v != NULL && v->type == LEPT_OBJECT);
+    v->u.o.capacity = v->u.o.size;
+    v->u.o.m = (lept_member*) realloc(v->u.o.m, v->u.o.size*sizeof(lept_member));
+}
+
+void lept_clear_object(lept_value* v) {
+    size_t i;
+    assert(v != NULL && v->type == LEPT_OBJECT);
+    for (i = 0; i < v->u.o.size; i++) {
+        free(v->u.o.m[i].k);
+        v->u.o.m[i].klen = 0;
+        lept_free(&v->u.o.m[i].v);
+        lept_init(&v->u.o.m[i].v);
+    }
+    v->u.o.size = 0;
+}
+
 size_t lept_get_object_size(const lept_value* v) {
     assert(v != NULL && v->type == LEPT_OBJECT);
     return v->u.o.size;
@@ -814,4 +854,55 @@ lept_value* lept_get_object_value(const lept_value* v, size_t index) {
     assert(v != NULL && v->type == LEPT_OBJECT);
     assert(index < lept_get_object_size(v));
     return &v->u.o.m[index].v;
+}
+
+size_t lept_find_object_index(const lept_value* v, const char* key, size_t klen) {
+    size_t i;
+    assert(v != NULL && v->type == LEPT_OBJECT);
+    for (i = 0; i < v->u.o.size; i++) {
+        if (v->u.o.m[i].klen == klen && memcmp(v->u.o.m[i].k, key, klen) == 0)
+            return i;
+    }
+    return LEPT_KEY_NOT_EXIST;
+}
+
+lept_value* lept_find_object_value(const lept_value* v, const char* key, size_t klen) {
+    size_t index;
+    assert(v != NULL && v->type == LEPT_OBJECT);
+    index = lept_find_object_index(v, key, klen);
+    return index == LEPT_KEY_NOT_EXIST ? NULL : &v->u.o.m[index].v;
+}
+
+lept_value* lept_set_object_value(lept_value* v, const char* key, size_t klen) {
+    lept_value* ret;
+    size_t size;
+    assert(v != NULL && v->type == LEPT_OBJECT);
+    ret = lept_find_object_value(v, key, klen);
+    if (!ret) {
+        if (v->u.o.size >= v->u.o.capacity)
+            lept_reserve_object(v, v->u.a.capacity == 0 ? 1 : v->u.a.capacity * 2);
+        size = v->u.o.size;
+        v->u.o.m[size].k = (char*) malloc(klen+1);
+        strcpy(v->u.o.m[size].k, key);
+        v->u.o.m[size].klen = klen;
+        ret = &v->u.o.m[size].v;
+        lept_init(ret);
+        v->u.o.size++;
+    }
+    return ret;
+}
+
+void lept_remove_object_value(lept_value* v, size_t index) {
+    size_t i;
+    assert(v != NULL && v->type == LEPT_OBJECT);
+    assert(v->u.o.size > index);
+    free(v->u.o.m[index].k);
+    lept_free(&v->u.o.m[index].v);
+    for (i = index; i < v->u.o.size-1; i++) {
+        memcpy(v->u.o.m+i, v->u.o.m+i+1, sizeof(lept_member));
+    }
+    v->u.o.m[v->u.o.size-1].k = NULL;
+    v->u.o.m[v->u.o.size-1].klen = 0;
+    lept_init(&v->u.o.m[v->u.o.size-1].v);
+    v->u.o.size--;
 }

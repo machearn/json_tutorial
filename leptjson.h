@@ -17,14 +17,16 @@ LEPT_ARRAY,
 LEPT_OBJECT
 }lept_type;
 
+#define LEPT_KEY_NOT_EXIST ((size_t)-1)
+
 typedef struct lept_value lept_value;
 typedef struct lept_member lept_member;
 
 struct lept_value {
     union{
         struct {char* s; size_t len;}s;
-        struct {lept_member* m; size_t size;}o;
         struct {lept_value* e; size_t size; size_t capacity;}a;
+        struct {lept_member* m; size_t size; size_t capacity;}o;
         double n;
     }u;
     lept_type type;
@@ -91,9 +93,18 @@ void lept_popback_array_element(lept_value* v);
 lept_value* lept_insert_array_element(lept_value* v, size_t index);
 void lept_erase_array_element(lept_value* v, size_t index, size_t count);
 
+void lept_set_object(lept_value* v, size_t capacity);
 size_t lept_get_object_size(const lept_value* v);
+size_t lept_get_object_capacity(const lept_value* v);
+void lept_reserve_object(lept_value* v, size_t capacity);
+void lept_shrink_object(lept_value* v);
+void lept_clear_object(lept_value* v);
 const char* lept_get_object_key(const lept_value* v, size_t index);
 size_t lept_get_object_key_length(const lept_value* v, size_t index);
 lept_value* lept_get_object_value(const lept_value* v, size_t index);
+size_t lept_find_object_index(const lept_value* v, const char* key, size_t klen);
+lept_value* lept_find_object_value(const lept_value* v, const char* key, size_t klen);
+lept_value* lept_set_object_value(lept_value* v, const char* key, size_t klen);
+void lept_remove_object_value(lept_value* v, size_t index);
 
 #endif
