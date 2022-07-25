@@ -23,8 +23,8 @@ typedef struct lept_member lept_member;
 struct lept_value {
     union{
         struct {char* s; size_t len;}s;
-        struct {lept_value* e; size_t size;}a;
         struct {lept_member* m; size_t size;}o;
+        struct {lept_value* e; size_t size; size_t capacity;}a;
         double n;
     }u;
     lept_type type;
@@ -79,8 +79,17 @@ const char* lept_get_string(const lept_value* v);
 size_t lept_get_string_length(const lept_value* v);
 void lept_set_string(lept_value* v, const char* s, size_t len);
 
+void lept_set_array(lept_value* v, size_t capacity);
 size_t lept_get_array_size(const lept_value* v);
+size_t lept_get_array_capacity(const lept_value* v);
+void lept_reserve_array(lept_value* v, size_t capacity);
+void lept_shrink_array(lept_value* v);
+void lept_clear_array(lept_value* v);
 lept_value* lept_get_array_element(const lept_value* v, size_t index);
+lept_value* lept_pushback_array_element(lept_value* v);
+void lept_popback_array_element(lept_value* v);
+lept_value* lept_insert_array_element(lept_value* v, size_t index);
+void lept_erase_array_element(lept_value* v, size_t index, size_t count);
 
 size_t lept_get_object_size(const lept_value* v);
 const char* lept_get_object_key(const lept_value* v, size_t index);
