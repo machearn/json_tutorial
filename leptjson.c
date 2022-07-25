@@ -539,6 +539,59 @@ char* lept_stringfy(const lept_value* v, size_t* len) {
     return c.stack;
 }
 
+void lept_copy(lept_value* dst, const lept_value* src) {
+    size_t i;
+    assert(dst != NULL && src != NULL && dst != src);
+    switch (src->type) {
+        case LEPT_STRING:
+            lept_set_string(dst, src->u.s.s, src->u.s.len);
+            break;
+        case LEPT_ARRAY:
+            lept_free(dst);
+            dst->type = LEPT_ARRAY;
+            dst->u.a.size = src->u.a.size;
+            dst->u.a.e = (lept_value*) malloc(src->u.a.size*sizeof(lept_value));
+            for (i = 0; i < src->u.a.size; i++) {
+                lept_copy(dst->u.a.e+i, src->u.a.e+i);
+            }
+            break;
+        case LEPT_OBJECT:
+            lept_free(dst);
+            dst->type = LEPT_OBJECT;
+            dst->u.o.size = src->u.o.size;
+            dst->u.o.m = (lept_member*) malloc(src->u.o.size*sizeof(lept_member));
+            for (i = 0; i < src->u.o.size; i++) {
+                dst->u.o.m[i].klen = src->u.o.m[i].klen;
+                dst->u.o.m[i].k = (char*) malloc(src->u.o.m[i].klen);
+                memcpy(dst->u.o.m[i].k, src->u.o.m[i].k, src->u.o.m[i].klen);
+                lept_copy(&dst->u.o.m[i].v, &src->u.o.m[i].v);
+            }
+            break;
+        default:
+            lept_free(dst);
+            memcpy(dst, src, sizeof(lept_value));
+            break;
+    }
+}
+
+void lept_move(lept_value* dst, lept_value* src) {
+    assert(dst != NULL && src != NULL && dst != src);
+    lept_free(dst);
+    memcpy(dst, src, sizeof(lept_value));
+    lept_init(src);
+}
+
+void lept_swap(lept_value* lhs, lept_value* rhs) {
+    assert(lhs != NULL && rhs != NULL);
+    if (lhs != rhs) {
+        lept_value temp;
+        size_t size = sizeof(lept_value);
+        memcpy(&temp, lhs, size);
+        memcpy(lhs, rhs, size);
+        memcpy(rhs, &temp, size);
+    }
+}
+
 void lept_free(lept_value* v) {
     size_t i;
     assert(v != NULL);
@@ -552,6 +605,17 @@ void lept_free(lept_value* v) {
         }
         free(v->u.a.e);
         v->u.a.size = 0;
+        v->u.a.capacity = 0;
+    }
+    if (v->type == LEPT_OBJECT) {
+        for (i = 0; i < v->u.o.size; i++) {
+            free(v->u.o.m[i].k);
+            v->u.o.m[i].klen = 0;
+            lept_free(&v->u.o.m[i].v);
+        }
+        free(v->u.o.m);
+        v->u.o.size = 0;
+        v->u.o.capacity = 0;
     }
     v->type = LEPT_NULL;
 }
@@ -559,6 +623,38 @@ void lept_free(lept_value* v) {
 lept_type lept_get_type(const lept_value* v) {
     assert(v != NULL);
     return v->type;
+}
+
+int lept_is_equal(const lept_value* lhs, const lept_value* rhs) {
+    size_t i;
+    assert(lhs != NULL && rhs != NULL);
+    if (lhs->type != rhs->type)
+        return 0;
+    
+    switch (lhs->type) {
+        case LEPT_STRING:
+            return lhs->u.s.len == rhs->u.s.len && memcmp(lhs->u.s.s, rhs->u.s.s, lhs->u.s.len)==0;
+        case LEPT_NUMBER:
+            return lhs->u.n == rhs->u.n;
+        case LEPT_ARRAY:
+            if (lhs->u.a.size != rhs->u.a.size)
+                return 0;
+            for (i = 0; i < lhs->u.a.size; i++) {
+                if (!lept_is_equal(lhs->u.a.e+i, rhs->u.a.e+i))
+                    return 0;
+            }
+            return 1;
+        case LEPT_OBJECT:
+            if (lhs->u.o.size != rhs->u.o.size)
+                return 0;
+            for (i = 0; i < lhs->u.o.size; i++) {
+                if (!lept_is_equal(&lhs->u.o.m[i].v, lept_find_object_value(rhs, lhs->u.o.m[i].k, lhs->u.o.m[i].klen)))
+                    return 0;
+            }
+            return 1;
+        default:
+            return 1;
+    }
 }
 
 int lept_get_boolean(const lept_value* v) {

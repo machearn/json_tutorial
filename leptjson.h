@@ -59,10 +59,15 @@ LEPT_PARSE_MISS_COMMA_OR_CURLY_BRACKET
 
 #define lept_init(v) do { (v)->type = LEPT_NULL; } while(0)
 
+void lept_copy(lept_value* dst, const lept_value* src);
+void lept_move(lept_value* dst, lept_value* src);
+void lept_swap(lept_value* lhs, lept_value* rhs);
+
 void lept_free(lept_value* v);
 #define lept_set_null(v) lept_free(v)
 
 lept_type lept_get_type(const lept_value* v);
+int lept_is_equal(const lept_value* lhs, const lept_value* rhs);
 
 int lept_get_boolean(const lept_value* v);
 void lept_set_boolean(lept_value* v, int b);
